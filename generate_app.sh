@@ -42,9 +42,20 @@ WEBSITE_URL="$2"
 ICON_PATH="$3"
 PACKAGE_NAME="${4:-com.generated.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '')}"
 
-# Validate inputs
+# Validate URL
 if [[ ! "$WEBSITE_URL" =~ ^https?:// ]]; then
     print_error "Website URL must start with http:// or https://"
+    exit 1
+fi
+
+# Validate package name format
+if [[ ! "$PACKAGE_NAME" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]]; then
+    print_error "Invalid package name: $PACKAGE_NAME"
+    print_error "Package name must:"
+    print_error "- Have at least 2 parts separated by dots (e.g., com.example.app)"
+    print_error "- Start with lowercase letter"
+    print_error "- Contain only lowercase letters, numbers, and underscores"
+    print_error "Generated package name: com.generated.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '' | sed 's/[^a-z0-9]//g')"
     exit 1
 fi
 

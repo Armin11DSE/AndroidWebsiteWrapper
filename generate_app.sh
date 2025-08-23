@@ -98,6 +98,15 @@ rsync -av \
     --exclude='local.properties' \
     . "$NEW_APP_DIR"/
 
+# Handle .gitignore specially - create a clean version for generated apps
+print_status "Creating clean .gitignore for generated app..."
+if [[ -f ".gitignore" ]]; then
+    # Create new gitignore excluding the lines we don't want in generated apps
+    grep -v "^\*.png$" .gitignore | grep -v "^/generated_apps" > "$NEW_APP_DIR/.gitignore.tmp"
+    mv "$NEW_APP_DIR/.gitignore.tmp" "$NEW_APP_DIR/.gitignore"
+    print_success "Clean .gitignore created (removed *.png and /generated_apps entries)"
+fi
+
 print_success "Template copied successfully"
 
 # Navigate to new app directory
@@ -200,17 +209,26 @@ fi
 
 # Update app icon
 print_status "Updating app icon..."
-ICON_DIRS=("app/src/main/res/mipmap-hdpi" "app/src/main/res/mipmap-mdpi" "app/src/main/res/mipmap-xhdpi" "app/src/main/res/mipmap-xxhdpi" "app/src/main/res/mipmap-xxxhdpi")
 
 # Get the absolute path of the icon
 ICON_ABSOLUTE_PATH="$(cd "$(dirname "$ICON_PATH")" && pwd)/$(basename "$ICON_PATH")"
 
+# Remove existing icons first to avoid conflicts
+print_status "Removing existing default icons..."
+find app/src/main/res -name "ic_launcher*.png" -delete 2>/dev/null || true
+find app/src/main/res -name "ic_launcher*.xml" -delete 2>/dev/null || true
+
+# Define icon directories
+ICON_DIRS=("app/src/main/res/mipmap-hdpi" "app/src/main/res/mipmap-mdpi" "app/src/main/res/mipmap-xhdpi" "app/src/main/res/mipmap-xxhdpi" "app/src/main/res/mipmap-xxxhdpi")
+
+# Copy new icon to all density folders
 for dir in "${ICON_DIRS[@]}"; do
     if [[ -d "$dir" ]]; then
-        cp "$ICON_ABSOLUTE_PATH" "$dir/ic_launcher.png" 2>/dev/null || true
-        cp "$ICON_ABSOLUTE_PATH" "$dir/ic_launcher_round.png" 2>/dev/null || true
+        cp "$ICON_ABSOLUTE_PATH" "$dir/ic_launcher.png" 2>/dev/null || print_warning "Could not copy icon to $dir"
+        cp "$ICON_ABSOLUTE_PATH" "$dir/ic_launcher_round.png" 2>/dev/null || print_warning "Could not copy icon to $dir"
     fi
 done
+
 print_success "App icon updated"
 
 # Update gradle wrapper properties if needed

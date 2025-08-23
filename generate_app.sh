@@ -213,9 +213,10 @@ print_status "Updating app icon..."
 # Get the absolute path of the icon
 ICON_ABSOLUTE_PATH="$(cd "$(dirname "$ICON_PATH")" && pwd)/$(basename "$ICON_PATH")"
 
-# Remove existing icons first to avoid conflicts
+# Remove ALL existing launcher icons to avoid conflicts
 print_status "Removing existing default icons..."
 find app/src/main/res -name "ic_launcher*.png" -delete 2>/dev/null || true
+find app/src/main/res -name "ic_launcher*.webp" -delete 2>/dev/null || true
 find app/src/main/res -name "ic_launcher*.xml" -delete 2>/dev/null || true
 
 # Define icon directories

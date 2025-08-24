@@ -42,20 +42,9 @@ WEBSITE_URL="$2"
 ICON_PATH="$3"
 PACKAGE_NAME="${4:-com.generated.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '')}"
 
-# Validate URL
+# Validate inputs
 if [[ ! "$WEBSITE_URL" =~ ^https?:// ]]; then
     print_error "Website URL must start with http:// or https://"
-    exit 1
-fi
-
-# Validate package name format
-if [[ ! "$PACKAGE_NAME" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]]; then
-    print_error "Invalid package name: $PACKAGE_NAME"
-    print_error "Package name must:"
-    print_error "- Have at least 2 parts separated by dots (e.g., com.example.app)"
-    print_error "- Start with lowercase letter"
-    print_error "- Contain only lowercase letters, numbers, and underscores"
-    print_error "Generated package name: com.generated.$(echo "$APP_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '' | sed 's/[^a-z0-9]//g')"
     exit 1
 fi
 
@@ -135,14 +124,23 @@ else
 fi
 
 # Update package name in build.gradle
-print_status "Updating package name..."
+print_status "Updating package name in build.gradle..."
 BUILD_GRADLE="app/build.gradle"
-if [[ -f "$BUILD_GRADLE" ]]; then
+BUILD_GRADLE_KTS="app/build.gradle.kts"
+
+# Check for both .gradle and .gradle.kts files
+if [[ -f "$BUILD_GRADLE_KTS" ]]; then
+    sed -i.bak "s/namespace = \".*\"/namespace = \"$PACKAGE_NAME\"/" "$BUILD_GRADLE_KTS"
+    sed -i.bak "s/applicationId = \".*\"/applicationId = \"$PACKAGE_NAME\"/" "$BUILD_GRADLE_KTS"
+    rm "$BUILD_GRADLE_KTS.bak" 2>/dev/null || true
+    print_success "Package name updated in build.gradle.kts"
+elif [[ -f "$BUILD_GRADLE" ]]; then
     sed -i.bak "s/applicationId \".*\"/applicationId \"$PACKAGE_NAME\"/" "$BUILD_GRADLE"
+    sed -i.bak "s/namespace \".*\"/namespace \"$PACKAGE_NAME\"/" "$BUILD_GRADLE"
     rm "$BUILD_GRADLE.bak" 2>/dev/null || true
     print_success "Package name updated in build.gradle"
 else
-    print_warning "build.gradle not found at expected location: $BUILD_GRADLE"
+    print_warning "build.gradle(.kts) not found at expected location"
 fi
 
 # Update website URL in MainActivity or WebView configuration
@@ -209,11 +207,18 @@ fi
 print_status "Updating AndroidManifest.xml..."
 MANIFEST_FILE="app/src/main/AndroidManifest.xml"
 if [[ -f "$MANIFEST_FILE" ]]; then
-    sed -i.bak "s/package=\".*\"/package=\"$PACKAGE_NAME\"/" "$MANIFEST_FILE"
-    sed -i.bak "s/android:name=\"\.MainActivity\"/android:name=\"${PACKAGE_NAME}.MainActivity\"/" "$MANIFEST_FILE"
-    sed -i.bak "s/android:name=\"com\.example\.androidwebsitewrapper\.MainActivity\"/android:name=\"${PACKAGE_NAME}.MainActivity\"/" "$MANIFEST_FILE"
+    # Generate theme name from package name (same as above)
+    THEME_NAME="Theme.$(echo "$PACKAGE_NAME" | sed 's/.*\.//' | sed 's/^./\U&/' | sed 's/\(.\)\([A-Z]\)/\1\2/g')"
+    
+    # Update activity name references
+    sed -i.bak "s/android:name=\"\.MainActivity\"/android:name=\".MainActivity\"/" "$MANIFEST_FILE"
+    sed -i.bak "s/android:name=\"com\.example\.androidwebsitewrapper\.MainActivity\"/android:name=\".MainActivity\"/" "$MANIFEST_FILE"
+    
+    # Update theme references
+    sed -i.bak "s/android:theme=\"@style\/Theme\.[^\"]*\"/android:theme=\"@style\/$THEME_NAME\"/" "$MANIFEST_FILE"
+    
     rm "$MANIFEST_FILE.bak" 2>/dev/null || true
-    print_success "AndroidManifest.xml updated"
+    print_success "AndroidManifest.xml updated with theme $THEME_NAME"
 else
     print_warning "AndroidManifest.xml not found at expected location: $MANIFEST_FILE"
 fi
@@ -243,6 +248,38 @@ done
 
 print_success "App icon updated"
 
+# Update settings.gradle root project name
+print_status "Updating settings.gradle..."
+SETTINGS_GRADLE="settings.gradle"
+SETTINGS_GRADLE_KTS="settings.gradle.kts"
+
+# Generate a clean project name from app name
+CLEAN_APP_NAME=$(echo "$APP_NAME" | sed 's/[^a-zA-Z0-9 ]//g')
+
+if [[ -f "$SETTINGS_GRADLE_KTS" ]]; then
+    sed -i.bak "s/rootProject.name = \".*\"/rootProject.name = \"$CLEAN_APP_NAME\"/" "$SETTINGS_GRADLE_KTS"
+    rm "$SETTINGS_GRADLE_KTS.bak" 2>/dev/null || true
+    print_success "Updated rootProject.name in settings.gradle.kts"
+elif [[ -f "$SETTINGS_GRADLE" ]]; then
+    sed -i.bak "s/rootProject.name = '.*'/rootProject.name = '$CLEAN_APP_NAME'/" "$SETTINGS_GRADLE"
+    sed -i.bak "s/rootProject.name = \".*\"/rootProject.name = \"$CLEAN_APP_NAME\"/" "$SETTINGS_GRADLE"
+    rm "$SETTINGS_GRADLE.bak" 2>/dev/null || true
+    print_success "Updated rootProject.name in settings.gradle"
+fi
+
+# Update themes.xml
+print_status "Updating themes.xml..."
+THEMES_FILE="app/src/main/res/values/themes.xml"
+if [[ -f "$THEMES_FILE" ]]; then
+    # Generate theme name from package name
+    THEME_NAME="Theme.$(echo "$PACKAGE_NAME" | sed 's/.*\.//' | sed 's/^./\U&/' | sed 's/\(.\)\([A-Z]\)/\1\2/g')"
+    sed -i.bak "s/name=\"Theme\.[^\"]*\"/name=\"$THEME_NAME\"/" "$THEMES_FILE"
+    rm "$THEMES_FILE.bak" 2>/dev/null || true
+    print_success "Updated theme name in themes.xml to $THEME_NAME"
+else
+    print_warning "themes.xml not found at expected location: $THEMES_FILE"
+fi
+
 # Update gradle wrapper properties if needed
 print_status "Checking Gradle wrapper..."
 if [[ -f "gradle/wrapper/gradle-wrapper.properties" ]]; then
@@ -256,9 +293,11 @@ print_status "Generating README..."
 cat > README.md << EOF
 # $APP_NAME
 
-This is an automatically generated Android app that displays the website: $WEBSITE_URL
+This is an automatically generated Android app that displays 
+the website: $WEBSITE_URL
 
 ## App Details
+
 - **App Name:** $APP_NAME
 - **Package Name:** $PACKAGE_NAME
 - **Website URL:** $WEBSITE_URL
@@ -273,13 +312,16 @@ This is an automatically generated Android app that displays the website: $WEBSI
 ## Customization
 
 To further customize this app, you can:
+
 - Modify the WebView settings in MainActivity
 - Update the app theme and colors in res/values/
 - Add additional features like splash screen, offline support, etc.
 - Update the app icon by replacing files in res/mipmap-* directories
 
 ## Generated by
+
 Android Website Wrapper Generator
+
 EOF
 
 print_success "README.md generated"

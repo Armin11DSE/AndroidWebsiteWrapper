@@ -267,17 +267,36 @@ elif [[ -f "$SETTINGS_GRADLE" ]]; then
     print_success "Updated rootProject.name in settings.gradle"
 fi
 
-# Update themes.xml
-print_status "Updating themes.xml..."
-THEMES_FILE="app/src/main/res/values/themes.xml"
-if [[ -f "$THEMES_FILE" ]]; then
-    # Generate theme name from package name
-    THEME_NAME="Theme.$(echo "$PACKAGE_NAME" | sed 's/.*\.//' | sed 's/^./\U&/' | sed 's/\(.\)\([A-Z]\)/\1\2/g')"
-    sed -i.bak "s/name=\"Theme\.[^\"]*\"/name=\"$THEME_NAME\"/" "$THEMES_FILE"
-    rm "$THEMES_FILE.bak" 2>/dev/null || true
-    print_success "Updated theme name in themes.xml to $THEME_NAME"
+
+# Update all theme files
+print_status "Updating theme files..."
+THEMES_BASE_DIR="app/src/main/res/values"
+
+# Generate theme name from package name
+THEME_NAME="Theme.$(echo "$PACKAGE_NAME" | sed 's/.*\.//' | sed 's/^./\U&/' | sed 's/\(.\)\([A-Z]\)/\1\2/g')"
+
+# Find all theme-related files
+THEME_FILES=()
+while IFS= read -r -d '' file; do
+    THEME_FILES+=("$file")
+done < <(find "$THEMES_BASE_DIR"* -name "*.xml" -type f \( -name "*themes*" -o -name "*styles*" \) -print0 2>/dev/null)
+
+if [[ ${#THEME_FILES[@]} -eq 0 ]]; then
+    print_warning "No theme files found in $THEMES_BASE_DIR directories"
 else
-    print_warning "themes.xml not found at expected location: $THEMES_FILE"
+    for THEME_FILE in "${THEME_FILES[@]}"; do
+        if [[ -f "$THEME_FILE" ]]; then
+            # Check if file contains theme definitions
+            if grep -q "name=\"Theme\." "$THEME_FILE"; then
+                print_status "Processing $(basename "$THEME_FILE") in $(basename "$(dirname "$THEME_FILE")")..."
+                sed -i.bak "s/name=\"Theme\.[^\"]*\"/name=\"$THEME_NAME\"/" "$THEME_FILE"
+                rm "$THEME_FILE.bak" 2>/dev/null || true
+                print_success "Updated theme name in $(basename "$THEME_FILE") to $THEME_NAME"
+            else
+                print_info "Skipping $(basename "$THEME_FILE") - no theme definitions found"
+            fi
+        fi
+    done
 fi
 
 # Update gradle wrapper properties if needed
